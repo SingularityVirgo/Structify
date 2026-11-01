@@ -51,6 +51,9 @@ management:
 
 app:
   studyroom-generation:
+    enabled: ${STUDYROOM_GENERATION_ENABLED:true}
+    poll-interval-ms: ${STUDYROOM_POLL_INTERVAL_MS:1000}
+    capacity: ${STUDYROOM_WORKER_CAPACITY:2}
     fragment-budget:
       maximum-calls: ${STUDYROOM_FRAGMENT_MAX_CALLS:4}
       maximum-tokens: ${STUDYROOM_FRAGMENT_MAX_TOKENS:20000}

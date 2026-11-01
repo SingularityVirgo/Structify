@@ -2,7 +2,7 @@
 import { computed, ref, watch, nextTick } from 'vue';
 import type {MaterialPosition,TeachingAction} from '../../../shared/types/classroom-experience';
 import type { StudyroomResource, StudyroomScene } from '../../../shared/types/studyroom';
-import { userApi } from '../../runtime';
+import {signedPptImageUrl} from '../../ppt-image';
 import StudyroomSlideRegions from './StudyroomSlideRegions.vue';
 import type {LectureRegion} from '../../lecture-types';
 const props = defineProps<{ scene: StudyroomScene; resources: StudyroomResource[]; bounded?:boolean;singlePage?:boolean;regions?:LectureRegion[] }>();
@@ -16,7 +16,10 @@ const failed = ref(new Set<string>());
 const retries = ref<Record<string, number>>({});
 const page = computed(() => props.scene.items[index.value]);
 const resource = computed(() => props.resources.find(r => r.id === page.value?.resourceId && r.type.toUpperCase() === 'PPT'));
-const url = computed(() => page.value ? userApi.coursewareImageUrl(page.value.resourceId) : '');
+const url = computed(() => signedPptImageUrl(resource.value));
+function thumbUrl(resourceId: string) {
+  return signedPptImageUrl(props.resources.find(candidate => candidate.id === resourceId));
+}
 const originalPage = computed(() => resource.value?.description.match(/原始页码=(\d+)/)?.[1]);
 const fullScreenHint = ref('');
 watch(() => props.scene.items.map(i => i.resourceId).join('|'), () => { index.value = Math.min(index.value, props.scene.items.length - 1); });
@@ -53,14 +56,14 @@ defineExpose({
       <div class="slide-zoom"><button type="button" aria-label="缩小" :disabled="zoom <= 1" @click="zoom = Math.max(1, zoom - .25)">−</button><span>{{ Math.round(zoom * 100) }}%</span><button type="button" aria-label="放大" :disabled="zoom >= 3" @click="zoom = Math.min(3, zoom + .25)">＋</button><button type="button" aria-label="恢复整页" @click="zoom = 1">整页</button><button type="button" aria-label="全屏阅读" @click="fullscreen">全屏</button></div>
     </header>
     <div ref="viewport" class="studyroom-slide-viewport" :class="{ 'is-zoomed': zoom > 1 }" @pointerdown="pointerDown" @pointermove="pointerMove" @pointerup="drag = null" @pointercancel="drag = null" @lostpointercapture="drag = null">
-      <div v-if="!resource?.available" class="slide-error" role="status">本页课件暂不可用，仍可阅读下方讲解。</div>
+      <div v-if="!resource?.available || !url" class="slide-error" role="status">本页课件暂不可用，仍可阅读下方讲解。</div>
       <div v-else-if="page && failed.has(page.resourceId)" class="slide-error" role="status">课件加载失败。<button type="button" aria-label="重试当前页" @click="retry">重试</button></div>
       <div v-else class="slide-canvas" :style="{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }"><img v-if="page" :key="`${page.resourceId}:${retries[page.resourceId] ?? 0}`" class="studyroom__slide" :src="url" :alt="resource?.title || '课程课件'" draggable="false" @load="imageSize={width:($event.target as HTMLImageElement).naturalWidth,height:($event.target as HTMLImageElement).naturalHeight}" @error="failed.add(page.resourceId)"><StudyroomSlideRegions v-if="bounded&&page&&regions" :scene-id="scene.id" :resource-id="page.resourceId" :regions="regions.filter(region=>region.sceneId===scene.id&&region.resourceId===page?.resourceId)" :focus-id="focusRegion" :natural-width="imageSize.width" :natural-height="imageSize.height" @save="emit('saveRegion',$event)" @remove="emit('removeRegion',$event)" @interact="emit('interact')"/></div>
     </div>
     <p v-if="fullScreenHint" role="status">{{ fullScreenHint }}</p>
     <div v-if="!bounded" class="slide-caption"><strong>{{ resource?.title }}</strong><span v-if="originalPage">原课件第 {{ originalPage }} 页</span></div>
     <p v-if="!bounded&&page?.explanation" class="slide-narration">{{ page.explanation }}</p>
-    <details v-if="!singlePage&&scene.items.length > 1" class="slide-directory"><summary>本步课件目录 · {{ scene.items.length }} 页</summary><nav aria-label="课件页目录"><button v-for="(item, i) in scene.items" :key="item.resourceId" type="button" :aria-current="i === index ? 'page' : undefined" @click="changePage(i)"><img :src="userApi.coursewareImageUrl(item.resourceId)" alt="" loading="lazy"><span>{{ i + 1 }} · {{ resources.find(r => r.id === item.resourceId)?.title || '课件页' }}</span></button></nav></details>
+    <details v-if="!singlePage&&scene.items.length > 1" class="slide-directory"><summary>本步课件目录 · {{ scene.items.length }} 页</summary><nav aria-label="课件页目录"><button v-for="(item, i) in scene.items" :key="item.resourceId" type="button" :aria-current="i === index ? 'page' : undefined" @click="changePage(i)"><img v-if="thumbUrl(item.resourceId)" :src="thumbUrl(item.resourceId)" alt="" loading="lazy"><span>{{ i + 1 }} · {{ resources.find(r => r.id === item.resourceId)?.title || '课件页' }}</span></button></nav></details>
   </section>
 </template>
 <style scoped>

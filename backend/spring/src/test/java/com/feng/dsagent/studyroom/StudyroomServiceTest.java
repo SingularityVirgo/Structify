@@ -90,6 +90,50 @@ class StudyroomServiceTest {
     }
 
     @Test
+    void overlaysServerSignedPptImageUrlOnRead() {
+        StudyroomResourceCatalog catalog = mock(StudyroomResourceCatalog.class);
+        when(catalog.candidates("chapter-1"))
+                .thenReturn(List.of(new StudyroomResourceCatalog.Candidate(
+                        com.feng.dsagent.studyroom.support.StudyroomModelOutput.ResourceType.PPT,
+                        "slide-1",
+                        "栈",
+                        "课件",
+                        List.of())));
+        when(catalog.pptImageUrl("slide-1"))
+                .thenReturn("/api/v1/presentation/slides/slide-1/sig.webp");
+        Instant now = Instant.now();
+        StudyroomMapper mapper = mock(StudyroomMapper.class);
+        when(mapper.selectOwnedRoom("room-id", 9L))
+                .thenReturn(roomRow("room-id", 9L, "chapter-1", "标题", "问题", "摘要", "step-1", 2, now, now));
+        when(mapper.selectCurrentSteps("room-id"))
+                .thenReturn(List.of(stepRow(
+                        "step-1",
+                        "s1",
+                        "lesson",
+                        "第一步",
+                        "图文讲解",
+                        "[]",
+                        "[{\"type\":\"ppt\",\"id\":\"slide-1\",\"parameters\":{\"imageUrl\":\"/stale\"}}]",
+                        0,
+                        false,
+                        null,
+                        now,
+                        signedSlideScene())));
+        when(mapper.selectCurrentMessages("room-id")).thenReturn(List.of());
+        StudyroomVO view = new StudyroomService(
+                        mock(AiQuotaExecution.class), mapper, catalog, new ObjectMapper(), RECORD_CONVERTER)
+                .get(9L, "room-id");
+        assertThat(view.steps()).singleElement().satisfies(step ->
+                assertThat(step.resources()).singleElement().satisfies(resource -> {
+                    assertThat(resource.available()).isTrue();
+                    assertThat(resource.parameters())
+                            .isInstanceOf(Map.class)
+                            .extracting(value -> ((Map<?, ?>) value).get("imageUrl"))
+                            .isEqualTo("/api/v1/presentation/slides/slide-1/sig.webp");
+                }));
+    }
+
+    @Test
     void hidesRoomsOwnedByAnotherUserAsNotFound() {
         AiQuotaExecution execution = mock(AiQuotaExecution.class);
         StudyroomMapper mapper = mock(StudyroomMapper.class);
@@ -137,6 +181,14 @@ class StudyroomServiceTest {
     }
 
     private String missingSlideScene() {
+        return slideScene("slide-missing");
+    }
+
+    private String signedSlideScene() {
+        return slideScene("slide-1");
+    }
+
+    private String slideScene(String slideId) {
         return new ObjectMapper()
                 .writeValueAsString(new StudyroomScene.Orchestration(
                         2,
@@ -146,7 +198,7 @@ class StudyroomServiceTest {
                                 "main",
                                 "PPT",
                                 "相关课件",
-                                List.of(new StudyroomScene.Item("slide-missing", "说明", null, null)),
+                                List.of(new StudyroomScene.Item(slideId, "说明", null, null)),
                                 null,
                                 null,
                                 null,

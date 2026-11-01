@@ -217,6 +217,19 @@ public class StudyroomResourceCatalog {
                 "lineCount", String.valueOf(s.code().split("\\R", -1).length))).toList();
     }
 
+    /**
+     * Signed, extension-bearing page URL from the presentation catalog. Read models inject this;
+     * the model never authors it, and stored resource JSON is not the cache address.
+     */
+    public String pptImageUrl(String slideId) {
+        if (presentations == null || slideId == null || slideId.isBlank()) {
+            return null;
+        }
+        PresentationSlide slide = presentations.slide(slideId);
+        String url = slide == null ? null : slide.imageUrl();
+        return url == null || url.isBlank() ? null : url;
+    }
+
     public Map<String,Object> animationDemo(String id) {
         if(animationEngine==null)return Map.of();
         var response=animationEngine.capabilities(null).orElse(null);

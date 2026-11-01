@@ -1,6 +1,6 @@
 # Structify 文档入口
 
-整理日期：2026-10-25（中度融合）。日常只读下列活文档；历史材料在 `archive/`，正式设计/计划在 `superpowers/`。
+整理日期：2026-11-01。日常只读下列活文档；历史材料在 `archive/`，正式设计/计划在 `superpowers/`。
 
 ## AI / Agent 权威规范
 
@@ -25,6 +25,7 @@ AI 编码代理：先读 [AI开发规范](AI开发规范.md) 与 [AGENTS](../AGE
 | AI 开发规则 | [AI开发规范.md](AI开发规范.md) |
 | 学习室 | [architecture/studyroom.md](architecture/studyroom.md)、[后端 ADR](adr/backend/阅读指南.md) |
 | 产品方向 | [产品方向.md](产品方向.md) |
+| 现在先做什么 | [下一步工作.md](下一步工作.md) |
 | 内容导入 | [guides/content-import-guide.md](guides/content-import-guide.md) |
 | Node/Spring 兼容 | [architecture/node-spring-compat.md](architecture/node-spring-compat.md) |
 | Spring 工程规范（强制分包与命名） | [architecture/backend-standards.md](architecture/backend-standards.md) |

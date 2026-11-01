@@ -20,11 +20,14 @@ import com.feng.dsagent.studyroom.fragment.domain.FragmentPlan;
 import com.feng.dsagent.studyroom.fragment.support.FragmentComposer;
 import com.feng.dsagent.studyroom.fragment.support.FragmentResourceResolver;
 import com.feng.dsagent.studyroom.fragment.worker.PreparationScheduler;
+import com.feng.dsagent.studyroom.generation.config.GenerationProperties;
+import com.feng.dsagent.studyroom.generation.support.GenerationJobTiming;
 import com.feng.dsagent.studyroom.generation.support.GenerationLease;
 
 import jakarta.annotation.PreDestroy;
 
-import org.springframework.beans.factory.annotation.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -34,6 +37,7 @@ import java.util.concurrent.*;
 
 @Component
 public class StudyroomGenerationWorker {
+    private static final Logger log = LoggerFactory.getLogger(StudyroomGenerationWorker.class);
     private final GenerationJobService jobs;
     private final OutlineMapper outlineRows;
     private final OutlineService outlines;
@@ -50,7 +54,7 @@ public class StudyroomGenerationWorker {
                     Thread.ofPlatform().daemon().name("studyroom-heartbeat").factory());
     /** Virtual-thread-per-task for generation jobs; concurrency capped by {@link #capacity}. */
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-    private final Semaphore capacity = new Semaphore(2);
+    private final Semaphore capacity;
     private ClassroomEventService events;
     @org.springframework.beans.factory.annotation.Autowired
     public void events(ClassroomEventService events) {this.events=events;}
@@ -72,7 +76,7 @@ public class StudyroomGenerationWorker {
             FragmentPublicationService publication,
             PreparationScheduler scheduler,
             OutlineJson json,
-            @Value("${app.studyroom-generation.enabled:true}") boolean enabled) {
+            GenerationProperties properties) {
         this.jobs = jobs;
         this.outlineRows = outlineRows;
         this.outlines = outlines;
@@ -82,10 +86,11 @@ public class StudyroomGenerationWorker {
         this.publication = publication;
         this.scheduler = scheduler;
         this.json = json;
-        this.enabled = enabled;
+        this.enabled = properties.enabled();
+        this.capacity = new Semaphore(properties.capacity());
     }
 
-    @Scheduled(fixedDelay = 1000)
+    @Scheduled(fixedDelayString = "${app.studyroom-generation.poll-interval-ms:1000}")
     public void poll() {
         if (!enabled || !capacity.tryAcquire()) return;
         executor.submit(
@@ -100,10 +105,15 @@ public class StudyroomGenerationWorker {
 
     public boolean runOnce() {
         jobs.recover();
-        var job = jobs.claim(Instant.now());
+        Instant claimedAt = Instant.now();
+        var job = jobs.claim(claimedAt);
         if (job == null) return false;
+        long queueWaitMs = GenerationJobTiming.queueWaitMs(job, claimedAt);
+        log.info("Studyroom job claimed job={} type={} queueWaitMs={}", job.get("id"), job.get("job_type"), queueWaitMs);
         var pulse =
                 heartbeat.scheduleAtFixedRate(() -> jobs.heartbeat(job), 15, 15, TimeUnit.SECONDS);
+        String outcome = "SUCCEEDED";
+        long started = System.nanoTime();
         try {
             GenerationLease.enter(job);
             long user = ((Number) job.get("user_id")).longValue();
@@ -117,17 +127,26 @@ public class StudyroomGenerationWorker {
                 jobs.mapper().markFragmentGenerating(fragment.get("id"));
                 jobs.mapper().touchRun(job.get("run_id"));
                 var plan=json.read((String)fragment.get("plan_json"),FragmentPlan.class);
+                long phaseAt = System.nanoTime();
                 if(events!=null)events.runUpdate(job,"phase",Map.of("phase","PREPARING_RESOURCES","fragmentId",fragment.get("id")));
                 var resolved=resources.resolve((String)fragment.get("question"),(String)fragment.get("chapter_id"),plan);
                 var context=Map.of("unit",json.value((String)fragment.get("unit_spec_json")),"question",fragment.get("question"));
                 var payload=json.object((String)job.get("payload_json"));
                 payload.put("executionContext",Map.of("objective",plan.objective(),"resourceRevision",resolved.revision(),"planHash",fragment.get("plan_hash")));
                 jobs.mapper().updateJobPayload(json.write(payload),job.get("id"));
+                log.info("Studyroom job phase job={} phase=PREPARING_RESOURCES elapsedMs={}", job.get("id"),
+                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - phaseAt));
+                phaseAt = System.nanoTime();
                 if(events!=null)events.runUpdate(job,"phase",Map.of("phase","GENERATING_CONTENT","fragmentId",fragment.get("id")));
                 String raw=composer.compose(user,(String)job.get("id"),plan,resolved,context);
+                log.info("Studyroom job phase job={} phase=GENERATING_CONTENT elapsedMs={}", job.get("id"),
+                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - phaseAt));
+                phaseAt = System.nanoTime();
                 if(events!=null)events.runUpdate(job,"phase",Map.of("phase","PUBLISHING","fragmentId",fragment.get("id")));
                 publication.publish(job,raw,resolved.revision());
                 scheduler.reconcile(user,(String)job.get("run_id"));
+                log.info("Studyroom job phase job={} phase=PUBLISHING elapsedMs={}", job.get("id"),
+                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - phaseAt));
             } else if(Set.of("PLAN","REVISE").contains((String)job.get("job_type"))) {
                 if(events!=null)events.beginOutline(job);
                 var draft = outlineRows.selectOwnedDraft((String) job.get("draft_id"), user, false);
@@ -155,8 +174,8 @@ public class StudyroomGenerationWorker {
                 throw new IllegalArgumentException("UNSUPPORTED_JOB_TYPE");
             }
         } catch (RuntimeException error) {
-            org.slf4j.LoggerFactory.getLogger(getClass())
-                    .warn(
+            outcome = "FAILED";
+            log.warn(
                             "Studyroom job failed: job={} error={} at={}",
                             job.get("id"),
                             error.getClass().getSimpleName(),
@@ -182,14 +201,17 @@ public class StudyroomGenerationWorker {
                                     : "生成未完成，请重试。此前已完成的内容会保留。";
             if(events!=null && Set.of("PLAN","REVISE").contains((String)job.get("job_type")) && jobs.active(job)) {
                 try {events.outlineUpdate(job,"failed",Map.of("code",code,"message",message),true);}
-                catch(RuntimeException eventFailure) {org.slf4j.LoggerFactory.getLogger(getClass()).warn("Unable to record outline failure event for job {}",job.get("id"));}
+                catch(RuntimeException eventFailure) {log.warn("Unable to record outline failure event for job {}",job.get("id"));}
             }
             if(events!=null&&"FRAGMENT".equals(job.get("job_type"))&&jobs.active(job)) {
                 try {events.runUpdate(job,"failed",Map.of("code",code,"message",message,"fragmentId",job.get("fragment_id")));}
-                catch(RuntimeException inaccessible){org.slf4j.LoggerFactory.getLogger(getClass()).warn("Unable to record fragment failure event for job {}",job.get("id"));}
+                catch(RuntimeException inaccessible){log.warn("Unable to record fragment failure event for job {}",job.get("id"));}
             }
             jobs.fail(job, code, message);
         } finally {
+            log.info("Studyroom job finished job={} type={} outcome={} queueWaitMs={} executionMs={}",
+                    job.get("id"), job.get("job_type"), outcome, queueWaitMs,
+                    TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
             GenerationLease.clear();
             pulse.cancel(false);
         }

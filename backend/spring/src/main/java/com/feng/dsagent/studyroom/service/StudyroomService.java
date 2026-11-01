@@ -16,6 +16,7 @@ import com.feng.dsagent.common.exception.BizException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -172,7 +173,7 @@ public class StudyroomService {
                 String id = item.path("id").asString("");
                 if (type.isBlank() || id.isBlank()) continue;
                 StudyroomResourceCatalog.Candidate candidate = candidates.get(type + ":" + id);
-                Object parameters = mapper.convertValue(item.path("parameters"), Object.class);
+                Object parameters = withSignedPptUrl(type, id, mapper.convertValue(item.path("parameters"), Object.class));
                 resources.add(new StudyroomVO.Resource(
                     type, id, candidate == null ? "" : candidate.title(), candidate == null ? "" : candidate.description(),
                     parameters, candidate != null
@@ -182,6 +183,27 @@ public class StudyroomService {
         } catch (RuntimeException error) {
             return List.of();
         }
+    }
+
+    /** Overlay the current signed slide URL so already-published fragments pick up CDN-cacheable addresses. */
+    private Object withSignedPptUrl(String type, String id, Object parameters) {
+        if (!"ppt".equalsIgnoreCase(type)) {
+            return parameters;
+        }
+        String url = resourceCatalog.pptImageUrl(id);
+        if (url == null || url.isBlank()) {
+            return parameters;
+        }
+        Map<String, Object> copy = new LinkedHashMap<>();
+        if (parameters instanceof Map<?, ?> map) {
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (entry.getKey() instanceof String name) {
+                    copy.put(name, entry.getValue());
+                }
+            }
+        }
+        copy.put("imageUrl", url);
+        return copy;
     }
 
     private static Timestamp timestamp(Instant instant) {
