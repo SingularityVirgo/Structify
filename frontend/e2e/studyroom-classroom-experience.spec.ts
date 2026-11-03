@@ -106,7 +106,7 @@ test('plays ordered narration, saves image-relative focus and keeps checks besid
   Object.defineProperty(window,'SpeechSynthesisUtterance',{configurable:true,value:Utterance});
   Object.defineProperty(window,'speechSynthesis',{configurable:true,value:{getVoices:()=>[{lang:'zh-CN'}],cancel(){},speak(utterance:Utterance){state.current=utterance;state.calls++;queueMicrotask(()=>utterance.onstart?.());}}});
  });
- await page.route('**/presentation/slides/harness-stack-slide/image',route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#f4f3ef"/><text x="80" y="100" font-size="36">Stack / top</text><rect x="240" y="180" width="300" height="260" fill="#ddd"/></svg>'}));
+ await page.route('**/presentation/slides/harness-stack-slide/**',route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#f4f3ef"/><text x="80" y="100" font-size="36">Stack / top</text><rect x="240" y="180" width="300" height="260" fill="#ddd"/></svg>'}));
  await classroom(page,'讲述框选回归');
  const controls=page.getByLabel('顺序讲授');await expect(controls.getByRole('button',{name:'开始讲授',exact:true})).toBeEnabled();
  await controls.getByRole('button',{name:'开始讲授',exact:true}).click();await expect(controls.getByRole('button',{name:'暂停讲授',exact:true})).toBeVisible();

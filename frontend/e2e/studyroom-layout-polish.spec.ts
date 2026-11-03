@@ -3,7 +3,7 @@ import {directory,resourcePage} from './fixtures/classroom-navigation';
 
 test('keeps original classroom styling with a collapsible brand rail, uniform tools and a complete quiz canvas',async({page})=>{
  await page.setViewportSize({width:1366,height:900});
- await page.route('**/presentation/slides/harness-stack-slide/image',route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="white"/><rect width="800" height="90" fill="#476fba"/><text x="45" y="58" fill="white" font-size="30">Stack / last in, first out</text><rect x="210" y="210" width="120" height="100" fill="#eee" stroke="#777"/><rect x="330" y="210" width="120" height="100" fill="#ddd" stroke="#777"/><text x="255" y="270" font-size="28">1</text><text x="375" y="270" font-size="28">2</text><text x="350" y="360" font-size="24">top</text></svg>'}));
+ await page.route('**/presentation/slides/harness-stack-slide/**',route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="white"/><rect width="800" height="90" fill="#476fba"/><text x="45" y="58" fill="white" font-size="30">Stack / last in, first out</text><rect x="210" y="210" width="120" height="100" fill="#eee" stroke="#777"/><rect x="330" y="210" width="120" height="100" fill="#ddd" stroke="#777"/><text x="255" y="270" font-size="28">1</text><text x="375" y="270" font-size="28">2</text><text x="350" y="360" font-size="24">top</text></svg>'}));
  await page.goto('/studyroom');
  await page.getByLabel('课程问题',{exact:true}).fill('栈的定义和C代码阅读，讲述框选回归，课堂布局回归');
  await page.getByRole('button',{name:'生成大纲',exact:true}).click();

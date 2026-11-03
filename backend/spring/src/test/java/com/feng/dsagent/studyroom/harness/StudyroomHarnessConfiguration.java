@@ -45,6 +45,11 @@ public class StudyroomHarnessConfiguration {
                     ?List.of(Map.of("id",sample.id(),"source",sample.code(),"sourceComplete","true","stdin",sample.stdin(),
                         "lineCount",String.valueOf(sample.code().split("\\R",-1).length))):List.of();
             }
+            @Override public String pptImageUrl(String slideId) {
+                return "harness-stack-slide".equals(slideId)
+                    ? "/api/v1/presentation/slides/harness-stack-slide/image"
+                    : null;
+            }
         };
     }
 
