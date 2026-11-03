@@ -43,6 +43,7 @@ class AiReadinessOperationApiIntegrationTest {
 
     @BeforeEach
     void prepareUserAndEmptyEvidence() {
+        jdbc.update("DELETE FROM model_configurations");
         jdbc.update("DELETE FROM user_roles WHERE user_id = ?", USER_ID);
         jdbc.update("DELETE FROM users WHERE id = ?", USER_ID);
         jdbc.update(

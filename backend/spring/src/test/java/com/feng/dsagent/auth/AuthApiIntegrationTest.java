@@ -37,6 +37,7 @@ class AuthApiIntegrationTest {
 
     @BeforeEach
     void clearAuthData() {
+        jdbc.update("DELETE FROM mail_configurations");
         jdbc.update("DELETE FROM verification_codes");
         jdbc.update("DELETE FROM admin_audit_events");
         jdbc.update("DELETE FROM user_roles");

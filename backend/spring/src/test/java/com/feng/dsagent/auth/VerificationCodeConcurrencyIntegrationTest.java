@@ -26,6 +26,7 @@ class VerificationCodeConcurrencyIntegrationTest {
     @Test
     void onlyOneConcurrentRequestCanConsumeTheSameVerificationCode() throws Exception {
         String email = "concurrent-code@example.com";
+        jdbc.update("DELETE FROM mail_configurations");
         jdbc.update("DELETE FROM verification_codes WHERE email = ?", email);
         VerificationCodeDelivery delivery = codes.request(email, "reset");
         assertThat(delivery.developmentCode()).isNotBlank();
